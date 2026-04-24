@@ -1,3 +1,4 @@
+# astar_planner.py
 import numpy as np
 import math
 import cv2
@@ -50,8 +51,11 @@ def plan_path(start,
     return path
 
 CURRENT_CLEARANCE = 0.0 
-MAP_W_CM = 400
-MAP_H_CM = 200
+map_scale = 1.5 # scales map to match falcom sim, that's 600 x 300
+
+MAP_W_CM = 400 * map_scale
+MAP_H_CM = 200 * map_scale
+
 SCALE = 2 # just for visual clarity
 CANVAS_W = int(MAP_W_CM * SCALE)
 CANVAS_H = int(MAP_H_CM * SCALE)
@@ -86,45 +90,46 @@ def is_in_obstacle(x, y, clearance_cm):
     Half-plane equations — exact math, no pixel lookup.
     c = robot_radius + user_clearance (total inflation)
     """
+    s  = 1.5
     c = ROBOT_RADIUS_CM + clearance_cm
 
     # ── BORDER ────────────────────────────────────────────────────────────────
-    if x >= MAP_W_CM - 5 - c: # right wall
+    if x >= MAP_W_CM - 5*s - c: # right wall
         return True
-    if y <= 5 + c: # bottom wall
+    if y <= 5*s + c: # bottom wall
         return True
-    if y >= MAP_H_CM - 5 - c: # top wall
+    if y >= MAP_H_CM - 5*s - c: # top wall
         return True
 
     # ── LEFT WALL (two segments, 80cm each, gap in middle for robot entry) ────
     # top-left segment: y=120 to y=200
-    if (x <= 5 + c) and (y >= 130 - c):
+    if (x <= 5*s + c) and (y >= 130*s - c):
         return True
     # bottom-left segment: y=0 to y=80
-    if (x <= 5 + c) and (y <= 70 + c):
+    if (x <= 5*s + c) and (y <= 70*s + c):
         return True
 
     # rect 1: center (42, 45), 30.40x30.40cm
-    if (x >= 42 - 15.2 - c) and (x <= 42 + 15.2 + c) and (y >= 45 - 15.2 - c) and (y <= 45 + 15.2 + c):
+    if (x >= 42*s - 15.2*s - c) and (x <= 42*s + 15.2*s + c) and (y >= 45*s - 15.2*s - c) and (y <= 45*s + 15.2*s + c):
         return True
 
     # rect 2: center (133.5, 155), 30.40x30.40cm
-    if (x >= 133.5 - 15.2 - c) and (x <= 133.5 + 15.2 + c) and (y >= 155   - 15.2 - c) and (y <= 155   + 15.2 + c):
+    if (x >= 133.5*s - 15.2*s - c) and (x <= 133.5*s + 15.2*s + c) and (y >= 155*s   - 15.2*s - c) and (y <= 155*s   + 15.2*s + c):
         return True
 
     # rect 3: center (220, 174), 30.40x30.40cm 
-    if (x >= 220 - 15.2 - c) and (x <= 220 + 15.2 + c) and (y >= 174 - 15.2 - c) and (y <= 174 + 15.2 + c):
+    if (x >= 220*s - 15.2*s - c) and (x <= 220*s + 15.2*s + c) and (y >= 174*s - 15.2*s - c) and (y <= 174*s + 15.2*s + c):
         return True
 
     # vertical wall: x=281, y=55→200, thickness=5cm 
-    if (x >= 278.5 - c) and (x <= 283.5 + c) and (y >= 55 - c):
+    if (x >= 278.5*s - c) and (x <= 283.5*s + c) and (y >= 55*s - c):
         return True
 
-    half_t = 2.5 + c #inflate wall by 2.5 each side to total 5thickness
+    half_t = 2.5*s + c #inflate wall by 2.5 each side to total 5thickness
 
     # diagonal wall 1: (38.4,200) → (108.4,78.76), 30deg 
-    w1x1, w1y1 = 38.4,  200.0 #startA
-    w1x2, w1y2 = 108.4, 78.76 #endB
+    w1x1, w1y1 = 38.4*s,  200.0*s #startA
+    w1x2, w1y2 = 108.4*s, 78.76*s #endB
     w1dx = w1x2 - w1x1 #how far x-dir AtoB
     w1dy = w1y2 - w1y1 #how far y-dir AtoB
     w1len = math.sqrt(w1dx**2 + w1dy**2) #wall length
@@ -137,8 +142,8 @@ def is_in_obstacle(x, y, clearance_cm):
         return True
 
     # diagonal wall 2: (126,5) to (~193.5,121.91), angle 120° from +x
-    w2x1, w2y1 = 126.0,  5.0
-    w2x2, w2y2 = 193.50, 121.91
+    w2x1, w2y1 = 126.0*s,  5.0*s
+    w2x2, w2y2 = 193.50*s, 121.91*s
     w2dx = w2x2 - w2x1
     w2dy = w2y2 - w2y1
     w2len = math.sqrt(w2dx**2 + w2dy**2)
