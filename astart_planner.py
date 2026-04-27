@@ -24,19 +24,22 @@ def plan_path(start,
     ROBOT_RADIUS_CM = robot_radius
     WHEEL_RADIUS_CM = wheel_radius
     WHEEL_DIST_CM = wheel_distance
-    GOAL_THRES = goal_threshold
-    TIME_STEP_S = delta_time
+    GOAL_THRES = goal_threshold 
+    TIME_STEP_S = delta_time #
 
     # build obstacle map
     _, obs_inflated = build_map(clearance)
+    
 
+    if not is_free_space(obs_inflated, end[0], end[1]):
+        return []
     # run A*
     pose_path, _ = astar(start, end[:2], rpm1, rpm2, obs_inflated)
-
+   
     if pose_path is None or len(pose_path) < 2:
-        return []
-
-    # convert absolute poses into [dx, dy, dtheta]
+        return[]
+    
+    # converts neighboring sampled poses into incremental commands
     path = []
     for i in range(len(pose_path) - 1):
         x1, y1, t1 = pose_path[i]
@@ -46,20 +49,22 @@ def plan_path(start,
         dy = y2 - y1
         dtheta = math.radians((t2 - t1 + 180) % 360 - 180)
 
-        path.append([dx, dy, dtheta])
+       
+#
+        path.append([dx , dy, dtheta])
 
     return path
 
 CURRENT_CLEARANCE = 0.0 
-map_scale = 1.5 # scales map to match falcom sim, that's 600 x 300
+map_scale = 1 # scales the map
 
 MAP_W_CM = 400 * map_scale
 MAP_H_CM = 200 * map_scale
 
-SCALE = 2 # just for visual clarity
+SCALE = 1 # just for visual clarity
 CANVAS_W = int(MAP_W_CM * SCALE)
 CANVAS_H = int(MAP_H_CM * SCALE)
-ROBOT_RADIUS_CM = 14.0 # TurtleBot3 Waffle (from datasheet)
+ROBOT_RADIUS_CM = 14.350 # TurtleBot3 Waffle (from datasheet)
 
 def to_opencv_coord(x_mm, y_mm):
     col = int(round(x_mm * SCALE)) 
@@ -89,43 +94,46 @@ def is_in_obstacle(x, y, clearance_cm):
     Returns True if (x,y) in cm is inside obstacle or clearance zone.
     Half-plane equations — exact math, no pixel lookup.
     c = robot_radius + user_clearance (total inflation)
+    axisis of reference: bottom-left corner
     """
-    s  = 1.5
-    c = ROBOT_RADIUS_CM + clearance_cm
+    s  = map_scale
+    c = clearance_cm
 
     # ── BORDER ────────────────────────────────────────────────────────────────
-    if x >= MAP_W_CM - 5*s - c: # right wall
+    if x >= MAP_W_CM - 5 - c: # right wall
         return True
-    if y <= 5*s + c: # bottom wall
+    if x <= 5 + c: # left wall
         return True
-    if y >= MAP_H_CM - 5*s - c: # top wall
+    if y <= 5 + c: # bottom wall
+        return True
+    if y >= MAP_H_CM - 5 - c: # top wall
         return True
 
-    # ── LEFT WALL (two segments, 80cm each, gap in middle for robot entry) ────
-    # top-left segment: y=120 to y=200
-    if (x <= 5*s + c) and (y >= 130*s - c):
+    # ── LEFT WALL (two segments, ~70cm each, gap (~90cm) in middle for robot entry) ────
+    # top-left segment: y=130 to top boundary 
+    if (x <= 5 + c) and (y >= 130*s - c):
         return True
-    # bottom-left segment: y=0 to y=80
-    if (x <= 5*s + c) and (y <= 70*s + c):
+    # bottom-left segment: y=0 t0 y=70
+    if (x <= 5 + c) and (y <= 70*s + c):
         return True
 
     # rect 1: center (42, 45), 30.40x30.40cm
-    if (x >= 42*s - 15.2*s - c) and (x <= 42*s + 15.2*s + c) and (y >= 45*s - 15.2*s - c) and (y <= 45*s + 15.2*s + c):
+    if (x >= 42*s - 15.2 - c) and (x <= 42*s + 15.2 + c) and (y >= 45*s - 15.2 - c) and (y <= 45*s + 15.2 + c):
         return True
 
     # rect 2: center (133.5, 155), 30.40x30.40cm
-    if (x >= 133.5*s - 15.2*s - c) and (x <= 133.5*s + 15.2*s + c) and (y >= 155*s   - 15.2*s - c) and (y <= 155*s   + 15.2*s + c):
+    if (x >= 133.5*s - 15.2 - c) and (x <= 133.5*s + 15.2 + c) and (y >= 155*s - 15.2 - c) and (y <= 155*s + 15.2 + c):
         return True
 
     # rect 3: center (220, 174), 30.40x30.40cm 
-    if (x >= 220*s - 15.2*s - c) and (x <= 220*s + 15.2*s + c) and (y >= 174*s - 15.2*s - c) and (y <= 174*s + 15.2*s + c):
+    if (x >= 220*s - 15.2 - c) and (x <= 220*s + 15.2 + c) and (y >= 174*s - 15.2 - c) and (y <= 174*s + 15.2 + c):
         return True
 
-    # vertical wall: x=281, y=55→200, thickness=5cm 
-    if (x >= 278.5*s - c) and (x <= 283.5*s + c) and (y >= 55*s - c):
+    # vertical wall: x=295-thickness→400, y=55→200, thickness=5cm 
+    if (x >= 290*s - c) and (x <= 295*s + c) and (y >= 55*s - c):
         return True
 
-    half_t = 2.5*s + c #inflate wall by 2.5 each side to total 5thickness
+    half_t = 2.5 + c # inflates wall by 2.5 each side to total 5thickness
 
     # diagonal wall 1: (38.4,200) → (108.4,78.76), 30deg 
     w1x1, w1y1 = 38.4*s,  200.0*s #startA
@@ -195,14 +203,31 @@ TIME_PER_ACTION_S = 1.0 # 1s per action (10 steps)
 def rpm_to_rads(rpm):
     return rpm * 2 * math.pi / 60.0
 
+def segment_is_free(obs_inflated, x1, y1, x2, y2, step_cm=1.0):
+    dist = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+    steps = max(2, int(dist / step_cm))
+
+    for i in range(steps + 1):
+        a = i / steps
+        x = x1 + a * (x2 - x1)
+        y = y1 + a * (y2 - y1)
+
+        if not is_free_space(obs_inflated, x, y):
+            return False
+
+    return True
 def differentail_drive(x, y, theta_deg, rpm_left, rpm_right, obs_inflated):
     ul = rpm_to_rads(rpm_left)
     ur = rpm_to_rads(rpm_right)
+
+    # convert theta to radians for motion eqn
     theta_rad = math.radians(theta_deg)
+
+
     r = WHEEL_RADIUS_CM
     L = WHEEL_DIST_CM
     curr_x , curr_y = x, y
-    curve_points = [(curr_x, curr_y)]
+    action_path = [(curr_x, curr_y, theta_deg)] #stores the  poses traveled during this one A* action
     cost = 0.0
     
     steps = int(TIME_PER_ACTION_S / TIME_STEP_S) # 10 steps for 1 action
@@ -213,17 +238,20 @@ def differentail_drive(x, y, theta_deg, rpm_left, rpm_right, obs_inflated):
         dy = (r/2) * (ul + ur) * math.sin(theta_rad) * TIME_STEP_S
         dtheta = (r/L) * (ur - ul) * TIME_STEP_S
         new_x = curr_x + dx # move forward by dx
-        new_y = curr_y + dy 
+        new_y = curr_y + dy # move forward by dy
         theta_rad += dtheta 
         
         if not is_free_space(obs_inflated, new_x, new_y):
             return None # action is invalid if have collision, astar skip this
         cost += math.sqrt(dx**2 + dy**2) # accumulate cost as dist travel
         curr_x, curr_y = new_x, new_y
-        curve_points.append((curr_x, curr_y))
-        
+        new_theta_deg = math.degrees(theta_rad) % 360
+
+        action_path.append((curr_x, curr_y, new_theta_deg)) 
+
+    
     new_theta_deg = math.degrees(theta_rad) % 360
-    return curr_x, curr_y, new_theta_deg, cost, curve_points
+    return curr_x, curr_y, new_theta_deg, cost, action_path
     
 def get_action_space(rpm1, rpm2):
     return [
@@ -259,14 +287,19 @@ def is_goal_reached(x,y, goal_x, goal_y):
 def astar(start, goal, rpm1, rpm2, obs_inflated):
     sx, sy, st = start
     gx, gy = goal
+
     actions = get_action_space(rpm1, rpm2)
     tie = 0 #prevent node crash if identical f or g cost
     open_list = [] #sort by f-cost
     visited = set()
-    all_curves = [] #curve draw for visualize
+    all_action_paths = [] # 
+
     cost_come = {snap_state_to_grid(*start) : 0} #g-cost per node
     parent_map = {snap_state_to_grid(*start) : None} #parent key
     parent_node = {snap_state_to_grid(*start) : start} #actual coord per node
+
+    # stores actual curved segment from parent to child
+    parent_action_path = {snap_state_to_grid(*start): []}
     heapq.heappush(open_list, (euclidean_heuristic(sx,sy,gx,gy), 0, tie, (sx,sy,st))) #f=heu, g=0 at start
 
 
@@ -287,12 +320,22 @@ def astar(start, goal, rpm1, rpm2, obs_inflated):
             print("Goal Reached")
             
             # start backtrack
-            path = []
-            while node is not None:
-                path.append(parent_node[node])
+            action_segments = []  
+            while parent_map[node] is not None:
+                action_segments.append(parent_action_path[node])
                 node = parent_map[node]
-            path.reverse()
-            return path, all_curves
+            action_segments.reverse()
+
+            # creates a one continuous pose path
+            final_path = []
+
+            for segment in action_segments:
+                if not final_path:
+                    final_path.extend(segment)
+                else:
+                    final_path.extend(segment[1:])
+
+            return final_path, all_action_paths
 
         # expand all actions space
         for rpm_left, rpm_right in actions:
@@ -301,7 +344,7 @@ def astar(start, goal, rpm1, rpm2, obs_inflated):
                 continue
             
             # get new neighbor position
-            nx, ny, nt, step_cost, curve = result
+            nx, ny, nt, step_cost, action_path = result
             neighbor = snap_state_to_grid(nx, ny, nt)
             if neighbor in visited:
                 continue
@@ -313,13 +356,17 @@ def astar(start, goal, rpm1, rpm2, obs_inflated):
                 cost_come[neighbor] = new_cost #g-cost
                 parent_map[neighbor] = node
                 parent_node[neighbor] = (nx,ny,nt)
+                # saves actual action path from parent to this neighbor
+                parent_action_path[neighbor] = action_path
+
+                # computes f-cost = g-cost + heuristic
                 f_cost = new_cost + euclidean_heuristic(nx,ny,gx,gy)  
                 tie +=1
                 heapq.heappush(open_list, (f_cost, new_cost, tie, (nx, ny, nt)))
-                all_curves.append(curve)
+                all_action_paths.append(action_path)
                 
     print("No path found.")
-    return None, all_curves
+    return None, all_action_paths
                 
 
 def visualize(obs_raw, obs_inflated, start, goal, all_curves, path, rpm1, rpm2):
@@ -441,6 +488,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
