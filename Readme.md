@@ -44,7 +44,7 @@ The planner uses a 400 cm × 200 cm map, which corresponds to the 4 m × 2 m Fal
 The obstacle map is hard coded inside `astar_planner.py` using half-plane equations. Obstacle inflation is based on:
 
 ```text
-robot radius + clearance
+5cm + clearance
 ```
 
 The A* planner expands differential drive motion primitives using RPM combinations and returns a path as incremental motion commands:
